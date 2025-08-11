@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blockly MicroPython IDE (ESP32‑S3)</title>
+  <style>
+    :root{
+      --bg:#0f1115; --surface:#171923; --muted:#202433; --muted-2:#2a2f45;
+      --text:#043fff; --text-dim:#9aa0b5; --brand:#6ee7b7; --accent:#7aa2f7;
+      --danger:#ff6b6b; --warn:#f7b267;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    h2{margin:12px 16px;font-weight:700;letter-spacing:.2px}
+    .app{display:grid;grid-template-rows:auto 1fr;gap:8px;height:100%}
+    .toolbar{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;background:var(--surface);border-bottom:1px solid #222638;align-items:center}
+    .toolbar .spacer{flex:1}
+    button, select, .fake-input{background:var(--muted);color:var(--text);border:1px solid #2a2f45;border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer}
+    button:hover{background:var(--muted-2)}
+    button.secondary{background:transparent;border-color:#2a2f45}
+    button.brand{background:var(--accent);border-color:var(--accent);color:#0b1020}
+    button.danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+    button:disabled{opacity:.55;cursor:not-allowed}
+
+    .content{display:grid;grid-template-columns:1.2fr .8fr;gap:8px;padding:8px;height:calc(100vh - 78px)}
+    #blocklyDiv{background:#0c0f17;border:1px solid #222638;border-radius:14px}
+
+    .rightCol{display:grid;grid-template-rows:1fr 1fr;gap:8px}
+    .panel{background:var(--surface);border:1px solid #222638;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+    .panel h3{font-size:13px;margin:0;padding:8px 10px;border-bottom:1px solid #222638;color:var(--text-dim);letter-spacing:.3px;text-transform:uppercase}
+    #codeArea, #output{flex:1;padding:12px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;font-size:13px;line-height:1.5;background:#0c0f17;color:#d7e0ff;overflow:auto;white-space:pre}
+    #codeArea{tab-size:2}
+    #output{color:#bde0ff}
+    .statusbar{display:flex;gap:10px;padding:6px 10px;border-top:1px solid #222638;background:#111421;font-size:12px;color:var(--text-dim)}
+    .dot{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:6px;background:#666}
+    .dot.online{background:var(--brand)}
+    .dot.offline{background:#666}
+    .kbd{padding:.2em .4em;border:1px solid #39405e;border-radius:6px;background:#0c0f17;font-size:.9em;color:#c1c9ee}
+
+    @media (max-width: 1100px){
+      .content{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+    }
+  </style>
+  <script defer src="blocklymin.js"></script>
+  <script defer src="blocklypython.js"></script>
+</head>
+<body>
+  <div class="app">
+    <h2>Blockly MicroPython IDE (ESP32‑S3)</h2>
+
+    <div class="toolbar">
+      <button id="saveBtn" title="Download your blocks as XML">Save Blocks</button>
+      <button id="loadBtn" title="Load blocks from an XML file">Load Blocks</button>
+      <input type="file" id="fileInput" accept=".xml" style="display:none" />
+      <div class="spacer"></div>
+      <label class="fake-input" title="Baud rate">
+        Baud:
+        <select id="baud">
+          <option value="115200">115200</option>
+          <option value="460800">460800</option>
+          <option value="921600">921600</option>
+        </select>
+      </label>
+      <button id="connectBtn" class="brand">Connect</button>
+      <button id="disconnectBtn" class="secondary" disabled>Disconnect</button>
+      <button id="runBtn" class="brand" disabled>Run on Device</button>
+      <button id="saveMainBtn" disabled>Save as <span class="kbd">main.py</span></button>
+      <button id="stopBtn" class="secondary" disabled>Stop <span class="kbd">Ctrl‑C</span></button>
+      <button id="resetBtn" class="secondary" disabled>Soft Reset <span class="kbd">Ctrl‑D</span></button>
+      <button id="clearOutBtn" class="secondary">Clear Output</button>
+    </div>
+
+    <div class="content">
+      <div id="blocklyDiv"></div>
+
+      <div class="rightCol">
+        <section class="panel">
+          <h3>Generated Python</h3>
+          <pre id="codeArea"># Python code will appear here…</pre>
+          <div class="statusbar">
+            <span><span id="connDot" class="dot offline"></span><span id="connLabel">Disconnected</span></span>
+            <span id="boardLabel"></span>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>Device Output</h3>
+          <pre id="output"># REPL output will appear here…</pre>
+          <div class="statusbar">
+            <span>Tips: Use <span class="kbd">Ctrl‑C</span> to interrupt, <span class="kbd">Ctrl‑D</span> to soft reset.</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbox -->
+  <xml id="toolbox" style="display:none">
+    <category name="Logic" colour="#5C81A6">
+      <block type="controls_if"></block>
+      <block type="logic_compare"></block>
+      <block type="logic_boolean"></block>
+    </category>
+    <category name="Loops" colour="#5CA65C">
+      <block type="controls_repeat_ext">
+        <value name="TIMES">
+          <shadow type="math_number">
+            <field name="NUM">3</field>
+          </shadow>
+        </value>
+      </block>
+      <block type="controls_whileUntil"></block>
+      <block type="controls_for"></block>
+    </category>
+    <category name="Math" colour="#5C68A6">
+      <block type="math_number"></block>
+      <block type="math_arithmetic"></block>
+    </category>
+    <category name="Text" colour="#5CA68D">
+      <block type="text"></block>
+      <block type="text_print"></block>
+    </category>
+    <category name="Variables" custom="VARIABLE" colour="#A65C81"></category>
+    <category name="Functions" custom="PROCEDURE" colour="#9A5CA6"></category>
+  </xml>
+
+  <script>
+    // ---- Blockly setup ----
+    let workspace;
+    function initBlockly(){
+      workspace = Blockly.inject('blocklyDiv', {
+        toolbox: document.getElementById('toolbox'),
+        scrollbars: true,
+        trashcan: true,
+        grid: { spacing: 20, length: 3, colour: '#2a2f45', snap: true },
+        renderer: 'zelos'
+      });
+      Blockly.Python.INFINITE_LOOP_TRAP = null;
+      workspace.addChangeListener(() => {
+        const code = Blockly.Python.workspaceToCode(workspace);
+        document.getElementById('codeArea').textContent = code || '# Python code will appear here…';
+      });
+      const defaultXml = `
+        <xml xmlns="https://developers.google.com/blockly/xml">
+          <block type="text_print" x="20" y="20">
+            <value name="TEXT">
+              <shadow type="text">
+                <field name="TEXT">Hello, ESP32‑S3!</field>
+              </shadow>
+            </value>
+          </block>
+        </xml>`;
+      Blockly.Xml.domToWorkspace(Blockly.Xml.textToDom(defaultXml), workspace);
+    }
+
+    // ---- Save / Load blocks ----
+    function setupFileButtons(){
+      const saveBtn = document.getElementById('saveBtn');
+      const loadBtn = document.getElementById('loadBtn');
+      const fileInput = document.getElementById('fileInput');
+      saveBtn.onclick = () => {
+        const xml = Blockly.Xml.workspaceToDom(workspace);
+        const xmlText = Blockly.Xml.domToPrettyText(xml);
+        const blob = new Blob([xmlText], {type: 'text/xml'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'blocks.xml'; a.click();
+        URL.revokeObjectURL(url);
+      };
+      loadBtn.onclick = () => fileInput.click();
+      fileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+          try{
+            const xml = Blockly.Xml.textToDom(e.target.result);
+            workspace.clear();
+            Blockly.Xml.domToWorkspace(xml, workspace);
+          }catch(err){ alert('Error parsing XML: '+ err); }
+        };
+        reader.readAsText(file);
+        event.target.value='';
+      });
+    }
+
+    // ---- Web Serial (MicroPython) ----
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    let port = null, reader = null, outputLock = false;
+
+    const qs = id => document.getElementById(id);
+    const setConnState = (online, label='')=>{
+      qs('connDot').classList.toggle('online', online);
+      qs('connDot').classList.toggle('offline', !online);
+      qs('connLabel').textContent = online ? 'Connected' : 'Disconnected';
+      qs('boardLabel').textContent = label;
+      qs('connectBtn').disabled = online;
+      qs('disconnectBtn').disabled = !online;
+      qs('runBtn').disabled = !online;
+      qs('saveMainBtn').disabled = !online;
+      qs('stopBtn').disabled = !online;
+      qs('resetBtn').disabled = !online;
+    }
+    const appendOut = (txt)=>{
+      const out = qs('output');
+      out.textContent += txt;
+      out.scrollTop = out.scrollHeight;
+    }
+    const clearOut = ()=>{ qs('output').textContent = ''; }
+
+    async function connectSerial(){
+      if(!('serial' in navigator)){
+        alert('Web Serial is not available in this browser. Use a Chromium‑based browser over HTTPS or localhost.');
+        return;
+      }
+      try{
+        port = await navigator.serial.requestPort({/* no filters to support common USB‑UART bridges */});
+        await port.open({ baudRate: parseInt(qs('baud').value, 10), dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+        setConnState(true, 'Opening…');
+        readLoop().catch(()=>{});
+        // Try to wake REPL
+        await writeRaw('\r\r');
+        await delay(80);
+        await writeRaw('import sys; print("\n[host] connected")\r');
+        setConnState(true, 'MicroPython (REPL)');
+      }catch(e){
+        console.error(e); alert('Failed to open serial: '+ e.message);
+        await disconnectSerial();
+      }
+    }
+
+    async function disconnectSerial(){
+      try{ reader && await reader.cancel(); }catch(_){}
+      try{ reader && reader.releaseLock && reader.releaseLock(); }catch(_){}
+      try{ port && port.readable && port.readable.cancel && await port.readable.cancel(); }catch(_){}
+      try{ port && port.close && await port.close(); }catch(_){}
+      port = null; reader = null;
+      setConnState(false);
+    }
+
+    async function readLoop(){
+      if(!port) return;
+      reader = port.readable.getReader();
+      try{
+        while(true){
+          const { value, done } = await reader.read();
+          if(done) break;
+          if(value) appendOut(dec.decode(value));
+        }
+      }catch(e){ console.log('readLoop end', e); }
+      finally{
+        try{ reader.releaseLock(); }catch(_){}
+      }
+    }
+
+    async function writeRaw(str){
+      if(!port) throw new Error('Not connected');
+      const writer = port.writable.getWriter();
+      try{ await writer.write(enc.encode(str)); }
+      finally{ writer.releaseLock(); }
+    }
+
+    const delay = (ms)=> new Promise(res=>setTimeout(res,ms));
+
+    async function interrupt(){ // Ctrl‑C twice to be safe
+      await writeRaw('\x03');
+      await delay(30);
+      await writeRaw('\x03');
+    }
+
+    async function softReset(){ // Ctrl‑D
+      await writeRaw('\x04');
+    }
+
+    function normalizeNewlines(s){
+      return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+
+    async function runCodeOnBoard(){
+      const code = normalizeNewlines(qs('codeArea').textContent || '');
+      if(!code.trim()) { alert('There is no code to run.'); return; }
+      await interrupt();
+      await delay(50);
+      // Enter paste mode (Ctrl‑E)
+      await writeRaw('\x05');
+      await delay(50);
+      // Stream lines with CR to avoid pastemode auto‑indent issues
+      const lines = code.split('\n');
+      for(const line of lines){
+        await writeRaw(line + '\r');
+        // tiny pause keeps UART buffers happy on slower bridges
+        await delay(1);
+      }
+      // Finish paste mode (Ctrl‑D)
+      await writeRaw('\x04');
+    }
+
+    // Save as main.py by transferring base64 chunks and writing on device
+    function chunk(str, size){ const out=[]; for(let i=0;i<str.length;i+=size) out.push(str.slice(i,i+size)); return out; }
+
+    async function saveAsMain(){
+      const code = normalizeNewlines(qs('codeArea').textContent || '');
+      const b64 = btoa(unescape(encodeURIComponent(code)));
+      const parts = chunk(b64, 300); // ~225 bytes per chunk
+      await interrupt();
+      await delay(30);
+      await writeRaw('\x05'); // paste mode
+      await delay(30);
+      await writeRaw('import ubinascii\r');
+      await writeRaw('f=open(\'main.py\',\'wb\')\r');
+      for(const p of parts){
+        await writeRaw(`f.write(ubinascii.a2b_base64(b'${p}'))\r`);
+        await delay(2);
+      }
+      await writeRaw('f.close()\r');
+      await writeRaw('\x04'); // run
+      appendOut('\n[host] Saved as main.py. Soft‑reset to run on boot.\n');
+    }
+
+    // ---- Wire up UI ----
+    function setupUi(){
+      qs('connectBtn').onclick = connectSerial;
+      qs('disconnectBtn').onclick = disconnectSerial;
+      qs('runBtn').onclick = runCodeOnBoard;
+      qs('stopBtn').onclick = interrupt;
+      qs('resetBtn').onclick = softReset;
+      qs('clearOutBtn').onclick = clearOut;
+      qs('saveMainBtn').onclick = saveAsMain;
+    }
+
+    // ---- Kickoff ----
+    window.addEventListener('DOMContentLoaded', () => {
+      initBlockly();
+      setupFileButtons();
+      setupUi();
+      // Surface a gentle hint if not secure context
+      if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+        appendOut('# Tip: Use HTTPS or localhost to enable Web Serial.\n');
+      }
+    });
+  </script>
+</body>
+</html>
